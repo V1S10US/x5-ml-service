@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException
 from contextlib import asynccontextmanager
 
 from schemas import ScoringRequest, ScoringResponse, ScoredCandidate
-from logger import logger
+from custom_logger import logger
 
 # Имитация инициализации моделей при старте
 @asynccontextmanager
