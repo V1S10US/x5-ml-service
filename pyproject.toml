@@ -1,0 +1,21 @@
+[project]
+name = "x5-candidate-scorer"
+version = "0.1.0"
+description = "ML service for candidate ranking"
+authors = [
+    {name = "X5 ML Team"}
+]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi (>=0.124.4,<0.125.0)",
+    "uvicorn (>=0.38.0,<0.39.0)",
+    "pydantic (>=2.12.5,<3.0.0)",
+    "scikit-learn (>=1.8.0,<2.0.0)",
+    "numpy (>=2.3.5,<3.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
