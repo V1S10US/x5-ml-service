@@ -2,22 +2,34 @@ import time
 from fastapi import FastAPI, HTTPException
 from contextlib import asynccontextmanager
 
-# Импортируем новые имена моделей
-from schemas import ScoringRequest, ScoringResponse, ScoredCandidateResult
+from schemas import ScoringRequest, ScoringResponse, ScoredCandidateResult, ScoredCandidateResultLLM, ScoringResponseLLM
 from custom_logger import logger
-from model_engine import scorer_engine
+# Импортируем наш новый класс
+from model_engine import lr_scorer
+from llm_engine import llm_scorer
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Initializing ML Scorer Engine...")
-    # Здесь можно добавить warmup моделей или подгрузку словарей
-    logger.info("ML Engine is ready to accept requests.")
+    logger.info("--- LIFESPAN START ---")
+    
+    # 1. Обучение модели при старте
+    try:
+        logger.info("Generating dummy data and training Linear Regression model...")
+        lr_scorer.train()
+        logger.info("Model artifact created in memory.")
+    except Exception as e:
+        logger.error(f"Failed to train model on startup: {e}")
+        raise e
+        
+    logger.info("Service is ready to accept requests.")
     yield
+    logger.info("--- LIFESPAN SHUTDOWN ---")
 
+# --- App Definition ---
 app = FastAPI(
-    title="Candidate Scoring Service", 
-    description="Microservice for ranking candidates based on CV text and metadata",
-    version="0.3.0", 
+    title="Candidate Scoring Service",
+    description="Hybrid scoring system: TF-IDF Baseline + LLM Analysis",
+    version="0.5.0",
     lifespan=lifespan
 )
 
@@ -34,62 +46,99 @@ async def score_candidates(payload: ScoringRequest):
     """
     req_id = f"req_{int(time.time())}"
     
-    # Доступ теперь через .title, а не ["название вакансии"]
     vacancy_title = payload.vacancy.title
-    vacancy_desc = payload.vacancy.description or "" # Handle None
+    vacancy_desc = payload.vacancy.description
     
-    # Комбинируем текст вакансии для TF-IDF: Title (вес x3) + Description
-    vacancy_full_text = (vacancy_title + " ") * 3 + vacancy_desc
-    
-    count = len(payload.candidates)
-    logger.info(f"[{req_id}] Start processing batch. Vacancy: '{vacancy_title}', Candidates: {count}")
+    logger.info(f"[{req_id}] Processing batch via LR Model for: '{vacancy_title}'")
 
-    # Конвертируем список Pydantic объектов в список словарей для engine
-    # model_dump() выгружает все поля, включая extra (из Excel)
+    # Конвертируем кандидатов в список словарей
     candidates_dicts = [c.model_dump() for c in payload.candidates]
 
     try:
-        # Вызов обновленного метода predict_batch (который теперь возвращает 3 значения)
-        # Нам нужно будет немного доработать model_engine.py, чтобы он возвращал детализацию, 
-        # или пока просто total_score.
-        # В текущей версии engine возвращает список float (total_score).
-        # Для чистоты архитектуры, давай предположим, что engine возвращает кортежи (total, text, meta)
-        # или мы посчитаем их здесь? Лучше пусть engine считает всё.
-        
-        # ВНИМАНИЕ: Так как в прошлом шаге я давал код engine, который возвращал List[float],
-        # здесь я адаптируюсь под него, но логичнее расширить engine. 
-        # Давай я обновлю вызов, предполагая, что engine теперь умный.
-        
-        # Для совместимости с текущим engine (v1.0), который возвращает просто float:
-        total_scores = scorer_engine.predict_batch(vacancy_full_text, candidates_dicts)
+        # Вызываем метод предсказания у обученной модели
+        # Теперь мы передаем title и desc отдельно, конкатенация внутри
+        scores = lr_scorer.predict(vacancy_title, vacancy_desc, candidates_dicts)
         
         results = []
-        for cand_obj, t_score in zip(payload.candidates, total_scores):
-            
-            # В будущем engine должен возвращать dict {"total": 0.8, "text": 0.7, "meta": 0.9}
-            # Пока реконструируем или ставим заглушку для компонентов
-            
+        for cand_obj, score in zip(payload.candidates, scores):
             results.append(ScoredCandidateResult(
                 candidate_id=cand_obj.id,
-                total_score=t_score,
-                # Пока ставим total, так как движок в прошлой версии не возвращал детализацию.
-                # Это можно улучшить в v1.1
-                text_score=t_score, 
-                meta_score=t_score 
+                total_score=round(score, 4), # Округляем до 4 знаков
+                
+                # Для этого пайплайна text_score и total_score - это одно и то же,
+                # так как модель учится на всем сразу.
+                text_score=round(score, 4),
+                meta_score=0.0 # В данной модели мета-признаки "размазаны" в тексте
             ))
-            
-            # Логируем ключевые метрики
-            logger.info(f"[{req_id}] CandID: {cand_obj.id} -> Score: {t_score}")
+            logger.info(f"[{req_id}] CandID: {cand_obj.id} -> Predicted: {score:.4f}")
 
     except Exception as e:
-        logger.error(f"[{req_id}] Processing failed: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal ML error: {str(e)}")
-
-    logger.info(f"[{req_id}] Batch finished successfully.")
+        logger.error(f"Prediction failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
     return ScoringResponse(
         vacancy_title=vacancy_title,
-        processed_count=count,
+        processed_count=len(results),
+        results=results
+    )
+
+@app.post("/score_candidates_llm", response_model=ScoringResponseLLM)
+async def score_candidates_llm(payload: ScoringRequest):
+    """
+    УМНЫЙ метод (LLM).
+    Использует GPT/LLM для анализа.
+    Время ответа: ~1-5 sec на кандидата.
+    Возвращает 'reason' (обоснование).
+    """
+    req_id = f"req_llm_{int(time.time())}"
+    vacancy_title = payload.vacancy.title
+    
+    logger.info(f"[{req_id}] LLM scoring request for '{vacancy_title}' ({len(payload.candidates)} cands)")
+
+    results = []
+    
+    # Обрабатываем кандидатов
+    # В проде здесь стоит использовать asyncio.gather для параллелизма (с лимитом семафора)
+    # Но сейчас сделаем простой цикл
+    for cand in payload.candidates:
+        try:
+            cand_dict = cand.model_dump()
+            
+            # Вызов LLM движка
+            llm_result = await llm_scorer.predict_one(
+                vacancy_title,
+                payload.vacancy.description or "",
+                cand_dict
+            )
+            
+            score = llm_result.get("score", 0.0)
+            reason = llm_result.get("reason", "No reason provided")
+            
+            # Логируем результат
+            logger.info(f"[{req_id}] Cand {cand.id}: {score} | {reason[:30]}...")
+
+            results.append(ScoredCandidateResultLLM(
+                candidate_id=cand.id,
+                total_score=score,
+                text_score=score,
+                meta_score=0.0,
+                reason=reason
+            ))
+            
+        except Exception as e:
+            logger.error(f"[{req_id}] Failed for cand {cand.id}: {e}")
+            # Возвращаем ошибку в скоре, но не валим весь батч
+            results.append(ScoredCandidateResultLLM(
+                candidate_id=cand.id,
+                total_score=0.0,
+                text_score=0.0,
+                meta_score=0.0,
+                reason=f"Processing Error: {str(e)}"
+            ))
+
+    return ScoringResponseLLM(
+        vacancy_title=vacancy_title,
+        processed_count=len(results),
         results=results
     )
 

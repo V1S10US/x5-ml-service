@@ -67,3 +67,13 @@ class ScoringResponse(BaseModel):
     vacancy_title: str
     processed_count: int
     results: List[ScoredCandidateResult]
+
+
+# --- Расширенные модели ответов для LLM ---
+class ScoredCandidateResultLLM(ScoredCandidateResult):
+    reason: str = Field("", description="Текстовое обоснование оценки от LLM")
+
+class ScoringResponseLLM(BaseModel):
+    vacancy_title: str
+    processed_count: int
+    results: List[ScoredCandidateResultLLM]
