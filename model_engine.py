@@ -42,26 +42,34 @@ class SimpleScorer:
 
     def compute_meta_score(self, candidate_data: Dict) -> float:
         """Эвристическая оценка метаданных (0.0 - 1.0)"""
-        score = 0.5 # Базовый скор
+        score = 0.5 
         
-        # 1. Проверка ВУЗа (Пример списка топовых вузов)
-        top_universities = ["мгу", "вшэ", "мфти", "спбгу", "итмо", "бауман"]
+        # 1. Проверка ВУЗа
+        # Обращаемся по ключу 'university', так как Pydantic уже свалидировал это имя
         uni = str(candidate_data.get("university", "")).lower()
+        top_universities = ["мгу", "вшэ", "мфти", "спбгу", "итмо", "бауман"]
         if any(u in uni for u in top_universities):
             score += 0.2
             
-        # 2. Проверка города (Бонус за Москву/Питер, если не указано иное)
-        # В идеале нужно сравнивать с городом вакансии, но пока хардкод
+        # 2. Проверка города
         city = str(candidate_data.get("city", "")).lower()
         if "москва" in city or "санкт-петербург" in city:
             score += 0.1
             
-        # 3. График работы (Бонус за фултайм)
-        schedule = str(candidate_data.get("work_hours", "")).lower()
+        # 3. График работы
+        schedule = str(candidate_data.get("schedule", "")).lower()
         if "40" in schedule or "полн" in schedule:
             score += 0.1
             
-        return min(1.0, score) # Cap at 1.0
+        # 4. Бонус за стек (если ключевые слова из вакансии есть в поле 'Языки')
+        # Этого не было раньше, но теперь у нас есть поле stack_keywords
+        stack = str(candidate_data.get("stack_keywords", "")).lower()
+        if len(stack) > 3: # Если поле не пустое
+            score += 0.05
+            
+        return min(1.0, score)
+
+
 
     def predict_batch(self, vacancy_full_text: str, candidates: List[Dict]) -> List[float]:
         """Основной метод пайплайна"""
