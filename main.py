@@ -2,10 +2,11 @@ import time
 from fastapi import FastAPI, HTTPException
 from contextlib import asynccontextmanager
 
-from schemas import ScoringRequest, ScoringResponse, ScoredCandidateResult
+from schemas import ScoringRequest, ScoringResponse, ScoredCandidateResult, ScoredCandidateResultLLM, ScoringResponseLLM
 from custom_logger import logger
 # Импортируем наш новый класс
 from model_engine import lr_scorer
+from llm_engine import llm_scorer
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -24,10 +25,11 @@ async def lifespan(app: FastAPI):
     yield
     logger.info("--- LIFESPAN SHUTDOWN ---")
 
+# --- App Definition ---
 app = FastAPI(
-    title="Candidate Scoring Service", 
-    description="Microservice for ranking candidates based on CV text and metadata",
-    version="0.3.0", 
+    title="Candidate Scoring Service",
+    description="Hybrid scoring system: TF-IDF Baseline + LLM Analysis",
+    version="0.5.0",
     lifespan=lifespan
 )
 
@@ -75,6 +77,66 @@ async def score_candidates(payload: ScoringRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
     return ScoringResponse(
+        vacancy_title=vacancy_title,
+        processed_count=len(results),
+        results=results
+    )
+
+@app.post("/score_candidates_llm", response_model=ScoringResponseLLM)
+async def score_candidates_llm(payload: ScoringRequest):
+    """
+    УМНЫЙ метод (LLM).
+    Использует GPT/LLM для анализа.
+    Время ответа: ~1-5 sec на кандидата.
+    Возвращает 'reason' (обоснование).
+    """
+    req_id = f"req_llm_{int(time.time())}"
+    vacancy_title = payload.vacancy.title
+    
+    logger.info(f"[{req_id}] LLM scoring request for '{vacancy_title}' ({len(payload.candidates)} cands)")
+
+    results = []
+    
+    # Обрабатываем кандидатов
+    # В проде здесь стоит использовать asyncio.gather для параллелизма (с лимитом семафора)
+    # Но сейчас сделаем простой цикл
+    for cand in payload.candidates:
+        try:
+            cand_dict = cand.model_dump()
+            
+            # Вызов LLM движка
+            llm_result = await llm_scorer.predict_one(
+                vacancy_title,
+                payload.vacancy.description or "",
+                cand_dict
+            )
+            
+            score = llm_result.get("score", 0.0)
+            reason = llm_result.get("reason", "No reason provided")
+            
+            # Логируем результат
+            logger.info(f"[{req_id}] Cand {cand.id}: {score} | {reason[:30]}...")
+
+            results.append(ScoredCandidateResultLLM(
+                candidate_id=cand.id,
+                total_score=score,
+                text_score=score,
+                meta_score=0.0,
+                reason=reason
+            ))
+            
+        except Exception as e:
+            logger.error(f"[{req_id}] Failed for cand {cand.id}: {e}")
+            # Возвращаем ошибку в скоре, но не валим весь батч
+            results.append(ScoredCandidateResultLLM(
+                candidate_id=cand.id,
+                total_score=0.0,
+                text_score=0.0,
+                meta_score=0.0,
+                reason=f"Processing Error: {str(e)}"
+            ))
+
+    return ScoringResponseLLM(
         vacancy_title=vacancy_title,
         processed_count=len(results),
         results=results
