@@ -1,6 +1,4 @@
-**Wiki: Candidate Scoring Service (ML-Scorer)**
-
-***
+# X5 Recruitment Ranker Service
 
 # 1. Обзор (Overview)
 
