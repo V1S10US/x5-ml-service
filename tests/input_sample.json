@@ -1,0 +1,47 @@
+{
+  "vacancy": {
+    "title": "Junior Python Developer",
+    "description": "Мы ищем Python разработчика в команду бэкенда. Стек: Python 3.10, FastAPI, PostgreSQL, Docker, Git. Опыт коммерческой разработки от 1 года или сильные пет-проекты."
+  },
+  "candidates": [
+    {
+      "id": "cand_python_pro",
+      "first_name": "Алексей",
+      "last_name": "Смирнов",
+      "cv_text": "Python Backend Developer. Опыт разработки REST API на FastAPI и Django. Знаю SQL, умею писать сложные запросы в PostgreSQL. Работал с Docker и docker-compose. Пет-проект: телеграм-бот для учета финансов.",
+      "stack_keywords": "Python; FastAPI; SQL; Docker; Git",
+      "university": "МГУ",
+      "graduation_year": 2024,
+      "city": "Москва",
+      "schedule": "40 часов",
+      "education_level": "Выпускник",
+      "major": "Прикладная математика и информатика"
+    },
+    {
+      "id": "cand_data_analyst",
+      "first_name": "Мария",
+      "last_name": "Петрова",
+      "cv_text": "Data Analyst. Занимаюсь анализом данных и A/B тестированием. Отличное знание Excel, PowerBI. Пишу скрипты на Python для автоматизации отчетов (Pandas, Numpy). Базовое знание SQL.",
+      "stack_keywords": "Python; SQL; Excel; Pandas; PowerBI",
+      "university": "КФУ",
+      "graduation_year": 2025,
+      "city": "Казань",
+      "schedule": "40 часов",
+      "education_level": "Студент 4 курса",
+      "major": "Экономика"
+    },
+    {
+      "id": "cand_qa_manual",
+      "first_name": "Дмитрий",
+      "last_name": "Иванов",
+      "cv_text": "Manual QA Engineer. Ручное тестирование веб-приложений. Написание тест-кейсов, работа в Jira и Confluence. Понимаю HTML/CSS. Хочу перейти в автоматизацию.",
+      "stack_keywords": "HTML; CSS; Jira; Manual Testing",
+      "university": "Политех",
+      "graduation_year": 2023,
+      "city": "Новосибирск",
+      "schedule": "30 часов",
+      "education_level": "Выпускник",
+      "major": "Инженер"
+    }
+  ]
+}
